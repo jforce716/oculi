@@ -22,6 +22,6 @@ setup(
     ],
     keywords='PiCamera, restful interfaces, montion detect',
     packages=find_packages(where='./oculi'),
-    install_requires=['flask', 'picamera']
+    install_requires=['flask', 'picamera', 'Pillow']
 )
     
