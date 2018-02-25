@@ -10,17 +10,17 @@ with open(path.join(here, 'README.lst'), encoding='utf-8') as f:
 setup(
     name='Oculi',
     version='0.1.0',
-    description='Picamera control restful services',
+    description='Picamera control and motion detect frontend',
     long_description=long_description,
     author='Jun Tan',
     author_email='jforce716@gmail.com',
     classifier=[
         'Development Status :: 3 - Alpha',
-        'Topic :: PiCamera :: Web application :: Motion detect',
+        'Topic :: PiCamera :: Application :: Motion detect',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3.6'
     ],
-    keywords='PiCamera, restful interfaces, montion detect',
+    keywords='PiCamera, montion detect',
     packages=find_packages(where='./oculi'),
     install_requires=['flask', 'picamera', 'Pillow']
 )
