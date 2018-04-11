@@ -8,7 +8,7 @@ from picamera import PiCamera
 
 CAMERA_SETTINGS = 'cameraSettings'
 TRIGGER_SETTINGS = 'triggerSettings'
-TRIGGER_MODULE = 'impl_module'
+MODULE_KEY = 'moduleName'
 DEFAULT_TRIGGER_MODULE = 'oculi.scheduled'
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class OculiCore:
 
     def setup_trigger(self, config={}):
         mname = DEFAULT_TRIGGER_MODULE
-        if config is not None and TRIGGER_MODULE in config:
+        if config is not None and MODULE_KEY in config:
             mname = config[TRIGGER_MODULE]
         mod = importlib.import_module(mname)
         self.trigger = mod.get_trigger(self.take_action, config)

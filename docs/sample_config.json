@@ -1,5 +1,13 @@
 {
     "cameraSettings": {
         "vflip": true
+    },
+    "triggerSettings": {
+        "moduleName": "oculi.scheduled",
+        "interval": 10
+    }
+    "actionSettings": {
+        "moduleName": "oculi.fileaction",
+        "directory": "./pictures"
     }
 }
