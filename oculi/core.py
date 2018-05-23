@@ -1,35 +1,45 @@
 import io
 import logging
-import PIL
 import time
 import importlib
 
+from PIL import Image
 from picamera import PiCamera
 
 CAMERA_SETTINGS = 'cameraSettings'
 TRIGGER_SETTINGS = 'triggerSettings'
+ACTION_SETTINGS = 'actionSettings'
+
 MODULE_KEY = 'moduleName'
 DEFAULT_TRIGGER_MODULE = 'oculi.scheduled'
+DEFAULT_ACTION_MODULE = 'oculi.fileaction'
 
 logger = logging.getLogger(__name__)
 
+def value_for_key(vdict, key, default_value):
+    if key in vdict:
+        return vdict[key]
+    else:
+        return default_value
+        
 class OculiCore:
-    def __init__(self, config={}):
+    def __init__(self, config):
+        if config is None:
+            config = {}
+            
         self.camera = PiCamera()
-        if config is not None:
+        try:
             self.config(config)
-        else:
-            logger.exception('None configuration')
+        except:
+            logger.exception('Error occurred during configuration')
             
     def config(self, config):
         if CAMERA_SETTINGS in config:
             for attr in config[CAMERA_SETTINGS]:
                 self.set_camera_attr(attr, config[CAMERA_SETTINGS][attr])
 
-        if TRIGGER_SETTINGS in config:
-            self.setup_trigger(config=config[TRIGGER_SETTINGS])
-        else:
-            self.setup_trigger()
+        self.setup_trigger(config[TRIGGER_SETTINGS])
+        self.setup_action(config[ACTION_SETTINGS])
 
     def start(self):
         '''Start oculi. It will listen to trigger for events . When it happens,
@@ -40,7 +50,11 @@ class OculiCore:
     def take_action(self):
         '''Take a picture, post-processing it and decide
            whether send it to server or ignore.'''
-        print('Event triggered. Take action...')
+        image = self.take_picture()
+        if image is None:
+            return
+
+        image.show()
 
     def take_picture(self):
         try:
@@ -50,7 +64,7 @@ class OculiCore:
             self.camera.capture(stream, format='jpeg')
             self.camera.stop_preview()
             stream.seek(0)
-            return PIL.Image.open(stream)
+            return Image.open(stream)
         except:
             logger.exception('Error occurred while taking photo')
 
@@ -64,10 +78,20 @@ class OculiCore:
             logger.exception('Cannot set camera attribute: {} to {}',
                              attr_name, value)
 
-    def setup_trigger(self, config={}):
-        mname = DEFAULT_TRIGGER_MODULE
-        if config is not None and MODULE_KEY in config:
-            mname = config[TRIGGER_MODULE]
+    def setup_trigger(self, config):
+        if config is None:
+            config = {}
+            
+        mname = value_for_key(config, MODULE_KEY, DEFAULT_TRIGGER_MODULE)
+        print('module name is {}'.format(mname))
         mod = importlib.import_module(mname)
         self.trigger = mod.get_trigger(self.take_action, config)
+        
+    def setup_action(self, config):
+        if config is None:
+            config = {}
+
+        mname = value_for_key(config, MODULE_KEY, DEFAULT_ACTION_MODULE)
+        mod = importlib.import_module(mname)
+        self.postProcessor = mod.get_processor(config)
         

@@ -4,8 +4,8 @@
     },
     "triggerSettings": {
         "moduleName": "oculi.scheduled",
-        "interval": 10
-    }
+        "interval": 30
+    },
     "actionSettings": {
         "moduleName": "oculi.fileaction",
         "directory": "./pictures"
