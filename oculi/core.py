@@ -2,6 +2,7 @@ import io
 import logging
 import time
 import importlib
+import threading
 
 from PIL import Image
 from picamera import PiCamera
@@ -26,7 +27,8 @@ class OculiCore:
     def __init__(self, config):
         if config is None:
             config = {}
-            
+
+        self.act_condition = threading.Condition() 
         self.camera = PiCamera()
         try:
             self.config(config)
@@ -47,6 +49,12 @@ class OculiCore:
         if self.trigger is not None:
             self.trigger.start()
 
+        while True:
+            self.act_condition.acquire()
+            self.act_condition.wait()
+            self.take_action()
+            self.act_condition.release()
+
     def take_action(self):
         '''Take a picture, post-processing it and decide
            whether send it to server or ignore.'''
@@ -54,7 +62,10 @@ class OculiCore:
         if image is None:
             return
 
-        image.show()
+        if self.postProcessor is not None:
+            self.postProcessor.process(image)
+        else:
+            logger.warning('No post processor is configured')
 
     def take_picture(self):
         try:
@@ -85,7 +96,7 @@ class OculiCore:
         mname = value_for_key(config, MODULE_KEY, DEFAULT_TRIGGER_MODULE)
         print('module name is {}'.format(mname))
         mod = importlib.import_module(mname)
-        self.trigger = mod.get_trigger(self.take_action, config)
+        self.trigger = mod.get_trigger(self.act_condition, config)
         
     def setup_action(self, config):
         if config is None:

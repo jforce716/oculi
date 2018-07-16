@@ -8,6 +8,6 @@
     },
     "actionSettings": {
         "moduleName": "oculi.fileaction",
-        "directory": "./pictures"
+        "directory": "/home/pi/Pictures"
     }
 }
