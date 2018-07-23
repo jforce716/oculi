@@ -2,18 +2,28 @@ import io
 import logging
 import time
 import importlib
-import threading
-
-from PIL import Image
 from picamera import PiCamera
+from picamera.array import PiRGBArray
+from PIL import Image
+from PIL import ImageFilter
+from PIL import ImageChops
 
-CAMERA_SETTINGS = 'cameraSettings'
-TRIGGER_SETTINGS = 'triggerSettings'
-ACTION_SETTINGS = 'actionSettings'
+PP_MODULE_KEY = 'postProcessorName'
+RESOLUTION_KEY = 'resolution'
+VFLIP_KEY = "vflip"
+FPS_KEY = 'fps'
+SHOW_VIDEO_KEY = 'showVideo'
+MIN_DIFF_KEY = 'minDiffPercentage'
+DELTA_THRESH_KEY = 'deltaThresh'
 
-MODULE_KEY = 'moduleName'
-DEFAULT_TRIGGER_MODULE = 'oculi.scheduled'
 DEFAULT_ACTION_MODULE = 'oculi.fileaction'
+DEFAULT_RESOLUTION = [640, 480]
+DEFAULT_FPS = 8
+DEFAULT_VFLIP = True
+DEFAULT_SHOW_VIDEO = True
+DEFAULT_DELTA_THRESH = 5
+DEFAULT_MIN_DIFF = 0.05
+WARMUP_TIME = 3
 
 logger = logging.getLogger(__name__)
 
@@ -28,81 +38,65 @@ class OculiCore:
         if config is None:
             config = {}
 
-        self.act_condition = threading.Condition() 
-        self.camera = PiCamera()
         try:
             self.config(config)
         except:
             logger.exception('Error occurred during configuration')
             
     def config(self, config):
-        if CAMERA_SETTINGS in config:
-            for attr in config[CAMERA_SETTINGS]:
-                self.set_camera_attr(attr, config[CAMERA_SETTINGS][attr])
-
-        self.setup_trigger(config[TRIGGER_SETTINGS])
-        self.setup_action(config[ACTION_SETTINGS])
+        self.camera = PiCamera()
+        self.camera.resolution = tuple(config.get(RESOLUTION_KEY,
+                                                  DEFAULT_RESOLUTION))
+        self.camera.vflip = config.get(VFLIP_KEY, DEFAULT_VFLIP)
+        self.camera.framerate = config.get(FPS_KEY, DEFAULT_FPS)
+        self.useVideo = config.get(SHOW_VIDEO_KEY, DEFAULT_SHOW_VIDEO)
+        self.deltaThresh = config.get(DELTA_THRESH_KEY, DEFAULT_DELTA_THRESH)
+        self.minDiffRatio = config.get(MIN_DIFF_KEY, DEFAULT_MIN_DIFF)
+        
+        self.setup_postprocessor(config)
 
     def start(self):
-        '''Start oculi. It will listen to trigger for events . When it happens,
-           the OculiCore will take action.'''
-        if self.trigger is not None:
-            self.trigger.start()
+        '''Start motion detection. Once motion is detected,
+           call postprocessor'''
+        time.sleep(WARMUP_TIME)
 
-        while True:
-            self.act_condition.acquire()
-            self.act_condition.wait()
-            self.take_action()
-            self.act_condition.release()
+        avg = None
+        blurFilter = ImageFilter.GaussianBlur(radius=21)
+        rawCapture = PiRGBArray(self.camera, size=self.camera.resolution)
 
-    def take_action(self):
-        '''Take a picture, post-processing it and decide
-           whether send it to server or ignore.'''
-        image = self.take_picture()
-        if image is None:
-            return
+        for f in self.camera.capture_continuous(rawCapture,
+                                                format='rgb',
+                                                use_video_port=self.useVideo):
+            motion = False
+            frame = Image.fromarray(f.array)
+            gray = frame.split()[1].filter(blurFilter)
 
-        if self.postProcessor is not None:
-            self.postProcessor.process(image)
-        else:
-            logger.warning('No post processor is configured')
+            if avg is None:
+                avg = gray
+                rawCapture.truncate(0)
+                continue
 
-    def take_picture(self):
-        try:
-            stream = io.BytesIO()
-            self.camera.start_preview()
-            time.sleep(2)
-            self.camera.capture(stream, format='jpeg')
-            self.camera.stop_preview()
-            stream.seek(0)
-            return Image.open(stream)
-        except:
-            logger.exception('Error occurred while taking photo')
+            avg = ImageChops.add(avg, gray, 2)
+            frameDelta = ImageChops.difference(avg, gray)
+            thresh = frameDelta.point(lambda x: 0 if x < self.deltaThresh else 255)
 
-        return None
+            total = 0
+            changedtotal = 0
+            for p in thresh.getdata():
+                total += 1
+                if p >= 255:
+                    changedtotal += 1
+            motion = changedtotal / total > self.minDiffRatio
             
+            if motion:
+                logger.info('Motion detected')
+                if self.postprocessor is not None:
+                    self.postprocessor.process(frame)
+
+            rawCapture.truncate(0)
     
-    def set_camera_attr(self, attr_name, value):
-        try:
-            setattr(self.camera, attr_name, value)
-        except:
-            logger.exception('Cannot set camera attribute: {} to {}',
-                             attr_name, value)
-
-    def setup_trigger(self, config):
-        if config is None:
-            config = {}
-            
-        mname = value_for_key(config, MODULE_KEY, DEFAULT_TRIGGER_MODULE)
-        print('module name is {}'.format(mname))
+    def setup_postprocessor(self, config):
+        mname = config.get(PP_MODULE_KEY, DEFAULT_ACTION_MODULE)
         mod = importlib.import_module(mname)
-        self.trigger = mod.get_trigger(self.act_condition, config)
-        
-    def setup_action(self, config):
-        if config is None:
-            config = {}
-
-        mname = value_for_key(config, MODULE_KEY, DEFAULT_ACTION_MODULE)
-        mod = importlib.import_module(mname)
-        self.postProcessor = mod.get_processor(config)
+        self.postprocessor = mod.get_processor(config)
         

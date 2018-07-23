@@ -1,13 +1,5 @@
 {
-    "cameraSettings": {
-        "vflip": true
-    },
-    "triggerSettings": {
-        "moduleName": "oculi.scheduled",
-        "interval": 30
-    },
-    "actionSettings": {
-        "moduleName": "oculi.fileaction",
-        "directory": "/home/pi/Pictures"
-    }
+    "vflip": true,
+    "postProcessorName": "oculi.fileaction",
+    "directory": "/home/pi/Pictures"
 }
