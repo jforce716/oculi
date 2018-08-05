@@ -2,11 +2,15 @@ import io
 import logging
 import time
 import importlib
+
 from picamera import PiCamera
 from picamera.array import PiRGBArray
+
 from PIL import Image
 from PIL import ImageFilter
 from PIL import ImageChops
+
+import MotionDetector
 
 PP_MODULE_KEY = 'postProcessorName'
 RESOLUTION_KEY = 'resolution'
@@ -50,8 +54,11 @@ class OculiCore:
         self.camera.vflip = config.get(VFLIP_KEY, DEFAULT_VFLIP)
         self.camera.framerate = config.get(FPS_KEY, DEFAULT_FPS)
         self.useVideo = config.get(SHOW_VIDEO_KEY, DEFAULT_SHOW_VIDEO)
-        self.deltaThresh = config.get(DELTA_THRESH_KEY, DEFAULT_DELTA_THRESH)
-        self.minDiffRatio = config.get(MIN_DIFF_KEY, DEFAULT_MIN_DIFF)
+
+        deltaThresh = config.get(DELTA_THRESH_KEY, DEFAULT_DELTA_THRESH)
+        minDiffRatio = config.get(MIN_DIFF_KEY, DEFAULT_MIN_DIFF)
+        self.mdetector = MotionDetector(delta_thresh=deltaThresh,
+                                        min_diff_ratio=minDiffRatio)
         
         self.setup_postprocessor(config)
 
@@ -67,33 +74,14 @@ class OculiCore:
         for f in self.camera.capture_continuous(rawCapture,
                                                 format='rgb',
                                                 use_video_port=self.useVideo):
-            motion = False
-            frame = Image.fromarray(f.array)
-            gray = frame.split()[1].filter(blurFilter)
-
-            if avg is None:
-                avg = gray
+            try:
+                frame = Image.fromarray(f.array)
+                if self.mdetector.detect_motion(frame.split()[1]):
+                    logger.info('Motion detected')
+                    if self.postprocessor is not None:
+                        self.postprocessor.process(frame)
+            finally:
                 rawCapture.truncate(0)
-                continue
-
-            avg = ImageChops.add(avg, gray, 2)
-            frameDelta = ImageChops.difference(avg, gray)
-            thresh = frameDelta.point(lambda x: 0 if x < self.deltaThresh else 255)
-
-            total = 0
-            changedtotal = 0
-            for p in thresh.getdata():
-                total += 1
-                if p >= 255:
-                    changedtotal += 1
-            motion = changedtotal / total > self.minDiffRatio
-            
-            if motion:
-                logger.info('Motion detected')
-                if self.postprocessor is not None:
-                    self.postprocessor.process(frame)
-
-            rawCapture.truncate(0)
     
     def setup_postprocessor(self, config):
         mname = config.get(PP_MODULE_KEY, DEFAULT_ACTION_MODULE)
