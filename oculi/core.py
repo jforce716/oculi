@@ -10,7 +10,7 @@ from PIL import Image
 from PIL import ImageFilter
 from PIL import ImageChops
 
-import MotionDetector
+from oculi.motion import MotionDetector
 
 PP_MODULE_KEY = 'postProcessorName'
 RESOLUTION_KEY = 'resolution'
